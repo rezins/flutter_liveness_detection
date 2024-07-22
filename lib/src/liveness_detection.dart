@@ -178,7 +178,7 @@ class _LivenessDetectionState extends State<LivenessDetection> {
       WidgetsBinding.instance
           .addPostFrameCallback((_) => _isTakingPicture = true);
       LoadingProgress.start(context);
-      await _photoCameraState!.sensorConfig.setZoom(0.0);
+      await _photoCameraState!.sensorConfig.setAspectRatio(CameraAspectRatios.ratio_16_9);
       //await _photoCameraState!.cameraContext.sensorConfig.setAspectRatio(CameraAspectRatios.ratio_16_9);
       var result = await _photoCameraState!.takePhoto();
       LoadingProgress.stop(context);
@@ -323,10 +323,11 @@ class _LivenessDetectionState extends State<LivenessDetection> {
       body: Stack(
         children: [
           CameraAwesomeBuilder.custom(
+            saveConfig: SaveConfig.photo(),
             previewFit: CameraPreviewFit.contain,
             sensorConfig: SensorConfig.single(
               sensor: Sensor.position(SensorPosition.front),
-              aspectRatio: CameraAspectRatios.ratio_4_3,
+              aspectRatio: CameraAspectRatios.ratio_16_9,
               zoom: 0.0,
             ),
             onImageForAnalysis: (img) => _analyzeImage(img),
@@ -357,16 +358,7 @@ class _LivenessDetectionState extends State<LivenessDetection> {
 
                           _processImage(faceModelSnapshot.data!.faces);
 
-                          final canvasTransformation = faceModelSnapshot.data!.img
-                              ?.getCanvasTransformation(_preview!);
-
-                          return CustomPaint(
-                            painter: FaceDetectorPainter(
-                              model: faceModelSnapshot.requireData,
-                              canvasTransformation: canvasTransformation,
-                              preview: _preview!,
-                            ),
-                          );
+                          return Container();
                         },
                       );
                     }
@@ -376,7 +368,7 @@ class _LivenessDetectionState extends State<LivenessDetection> {
             },
           ),
           Positioned(
-            bottom: 0.01,
+            bottom: 30,
             child: SizedBox(
               height: 150,
               width: MediaQuery.of(context).size.width,

@@ -110,6 +110,10 @@ class LivenessDetectionStepOverlayState extends State<LivenessDetectionStepOverl
 
       widget.onTakingPicture();
 
+      await Future.delayed(
+        const Duration(milliseconds: 750),
+      );
+
       /*WidgetsBinding.instance
           .addPostFrameCallback((_) => setState((){
         _progressBar = true;
