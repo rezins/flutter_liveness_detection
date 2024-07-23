@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math';
-
+import 'package:camerawesome/pigeon.dart';
 import 'package:camerawesome/camerawesome_plugin.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_liveness_detection/models/liveness_detection_step.dart';
@@ -322,7 +322,9 @@ class _LivenessDetectionState extends State<LivenessDetection> {
       body: Stack(
         children: [
           CameraAwesomeBuilder.custom(
-            saveConfig: SaveConfig.photo(),
+            saveConfig: SaveConfig.photoAndVideo(
+              videoOptions: VideoOptions(enableAudio: false)
+            ),
             previewFit: CameraPreviewFit.contain,
             sensorConfig: SensorConfig.single(
               sensor: Sensor.position(SensorPosition.front),
