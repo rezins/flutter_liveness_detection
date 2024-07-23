@@ -169,7 +169,6 @@ class _LivenessDetectionState extends State<LivenessDetection> {
   }
 
   void _takePicture() async {
-
     try {
 
       if (_isTakingPicture || _photoCameraState == null) {
@@ -370,7 +369,7 @@ class _LivenessDetectionState extends State<LivenessDetection> {
           Positioned(
             bottom: 30,
             child: SizedBox(
-              height: 150,
+              height: MediaQuery.of(context).size.height,
               width: MediaQuery.of(context).size.width,
               child: LivenessDetectionStepOverlay(
                   key: _stepsKey,
@@ -381,11 +380,6 @@ class _LivenessDetectionState extends State<LivenessDetection> {
                   ),
                   onTakingPicture: () {
                     _notifTakingPicture = true;
-
-                    WidgetsBinding.instance
-                        .addPostFrameCallback((_) => setState(() {
-
-                    }));
                   }
               ),
             ),

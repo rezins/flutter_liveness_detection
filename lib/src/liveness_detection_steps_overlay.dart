@@ -102,31 +102,38 @@ class LivenessDetectionStepOverlayState extends State<LivenessDetectionStepOverl
           .addPostFrameCallback((_) => setState((){
         page++;
         counter++;
-      }));
-
-      await Future.delayed(
-        const Duration(milliseconds: 250),
-      );
-
-      widget.onTakingPicture();
-
-      await Future.delayed(
-        const Duration(milliseconds: 750),
-      );
-
-      /*WidgetsBinding.instance
-          .addPostFrameCallback((_) => setState((){
         _progressBar = true;
       }));
 
-      for (int i = 0; i <= 110; i++) {
-        progress = i.toDouble();
-        await Future.delayed(const Duration(milliseconds: (3000 ~/ 100))); // Delay calculation
-      }
-      WidgetsBinding.instance
-          .addPostFrameCallback((_) => setState(() => _progressBar = false));*/
+      try{
+        await Future.delayed(
+          const Duration(milliseconds: 250),
+        );
 
-      widget.onCompleted();
+        widget.onTakingPicture();
+
+        // WidgetsBinding.instance
+        //     .addPostFrameCallback((_) async {
+        //
+        //   setState(() {
+        //     _progressBar = true;
+        //   });
+        // });
+
+        await Future.delayed(
+          const Duration(seconds: 3),
+        );
+
+        // WidgetsBinding.instance
+        //     .addPostFrameCallback((_) async {
+        //
+        //   setState(() {
+        //     _progressBar = false;
+        //   });
+        // });
+
+        widget.onCompleted();
+      }catch(e){}
     }
   }
 
@@ -206,48 +213,32 @@ class LivenessDetectionStepOverlayState extends State<LivenessDetectionStepOverl
   //* MARK: - Private Methods for UI Components
   //? =========================================================
   Widget _buildBody() {
-/*    if(_progressBar){
-      return Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          SizedBox(
-            height: 350,
-            width: 350,
-            child: Center(
-              child: DashedCircularProgressBar.aspectRatio(
-                aspectRatio: 1, // width ÷ height
-                progress: progress,
-                startAngle: 0,
-                sweepAngle: 360,
-                foregroundColor: const Color.fromARGB(255, 0, 112, 224),
-                backgroundColor: const Color(0xffeeeeee),
-                foregroundStrokeWidth: 15,
-                backgroundStrokeWidth: 15,
-                animation: true,
-                seekSize: 6,
-                seekColor: const Color(0xffeeeeee),
+    if(_progressBar){
+      return Align(
+        alignment: Alignment.center,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 400,),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Container(
+                decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(15)
+                ),
+                width: 100.0, // Adjust width as needed
+                height: 40.0, // Adjust height as needed
+                child: Center(child: Text("Pengambilan Foto", style: GoogleFonts.workSans(fontSize: 20), )),
               ),
             ),
-          ),
-          const SizedBox(height: 20,),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Container(
-              decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(15)
-              ),
-              width: 100.0, // Adjust width as needed
-              height: 40.0, // Adjust height as needed
-              child: Center(child: Text("Pengambilan Foto", style: GoogleFonts.workSans(fontSize: 20), )),
-            ),
-          ),
-          const SizedBox(height: 100,)
-        ],
+          ],
+        ),
       );
-    }else{*/
+      return Container();
+    }else{
       return Align(
         alignment: Alignment.bottomCenter,
         child: Column(
@@ -255,8 +246,8 @@ class LivenessDetectionStepOverlayState extends State<LivenessDetectionStepOverl
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Flexible(
-              flex: 2,
+            Container(
+              height: 80,
               child: AbsorbPointer(
                 absorbing: true,
                 child: PageView.builder(
@@ -283,7 +274,7 @@ class LivenessDetectionStepOverlayState extends State<LivenessDetectionStepOverl
           ],
         ),
       );
-    /*}*/
+    }
   }
 
   Widget _actionBox(String text){
