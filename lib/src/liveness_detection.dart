@@ -7,14 +7,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_liveness_detection/models/liveness_detection_step.dart';
 import 'package:flutter_liveness_detection/models/liveness_step_item.dart';
 import 'package:flutter_liveness_detection/models/liveness_threshold.dart';
-import 'package:flutter_liveness_detection/src/liveness_detection_steps_overlay.dart';
 import 'package:flutter_liveness_detection/utils/mlkit_utils.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:rxdart/rxdart.dart';
 import 'package:collection/collection.dart';
 import 'package:loading_progress/loading_progress.dart';
 import 'package:google_fonts/google_fonts.dart';
-
+import 'package:loading_animation_widget/loading_animation_widget.dart';
+import 'package:flutter_stepindicator/flutter_stepindicator.dart';
 
 class LivenessDetection extends StatefulWidget {
 
@@ -29,23 +29,22 @@ class LivenessDetection extends StatefulWidget {
 
 class _LivenessDetectionState extends State<LivenessDetection> {
 
-
-  final GlobalKey<LivenessDetectionStepOverlayState> _stepsKey =
-  GlobalKey<LivenessDetectionStepOverlayState>();
-
-  late bool _isInfoStepCompleted;
   late final List<LivenessDetectionStepItem> steps;
   final _faceDetectionController = BehaviorSubject<FaceDetectionModel>();
   Preview? _preview;
   PhotoCameraState? _photoCameraState;
 
   bool _isProcessingStep = false;
-  bool _didCloseEyes = false;
+  bool _isLoadingStep = false;
+  bool _isFinish = false;
   bool _isTakingPicture = false;
 
   List<LivenessThreshold> _thresholds = [];
+  List list = [];
 
   Timer? _timerToDetectFace;
+
+  int _currentStep = 0;
 
   final options = FaceDetectorOptions(
     enableContours: true,
@@ -77,100 +76,41 @@ class _LivenessDetectionState extends State<LivenessDetection> {
   void _preInitCallBack() {
     steps = widget.steps;
     if(widget.thresholds != null) _thresholds = widget.thresholds!;
+    list.addAll(steps);
   }
 
   Future<void> _processImage(List<Face> faces) async{
-    if (faces.isEmpty) {
-      _resetSteps();
+    if(_isFinish){
+      await Future.delayed(
+        const Duration(seconds: 2),
+      );
+      _takePicture();
+      return;
     }else{
-      if (_isProcessingStep &&
-          steps[_stepsKey.currentState?.currentIndex ?? 0].step ==
-              LivenessDetectionStep.blink) {
-        if (_didCloseEyes) {
-          if ((faces.first.leftEyeOpenProbability ?? 1.0) < 0.75 &&
-              (faces.first.rightEyeOpenProbability ?? 1.0) < 0.75) {
-            await _completeStep(
-              step: steps[_stepsKey.currentState?.currentIndex ?? 0].step,
-            );
-          }
-        }
-      }
       _detect(
         face: faces.first,
-        step: steps[_stepsKey.currentState?.currentIndex ?? 0].step,
-      );
-    }
-  }
-
-  Future<void> _completeStep({
-    required LivenessDetectionStep step,
-  }) async {
-    final int indexToUpdate = steps.indexWhere(
-          (p0) => p0.step == step,
-    );
-
-    steps[indexToUpdate] = steps[indexToUpdate].copyWith(
-      isCompleted: true,
-    );
-    if (mounted) {
-      WidgetsBinding.instance
-          .addPostFrameCallback((_) => setState((){}));
-    }
-    await _stepsKey.currentState?.nextPage();
-    _stopProcessing();
-  }
-
-  void _stopProcessing() {
-    if (!mounted) {
-      return;
-    }
-    WidgetsBinding.instance
-        .addPostFrameCallback((_) => setState(
-          () => _isProcessingStep = false,
-    ));
-  }
-
-  void _startProcessing() {
-    if (!mounted) {
-      return;
-    }
-    WidgetsBinding.instance
-        .addPostFrameCallback((_) => setState(
-          () => _isProcessingStep = true,
-    ));
-  }
-
-  void _resetSteps() async {
-    for (var p0 in steps) {
-      final int index = steps.indexWhere(
-            (p1) => p1.step == p0.step,
-      );
-      steps[index] = steps[index].copyWith(
-        isCompleted: false,
+        step: steps[_currentStep < steps.length - 1 ? _currentStep : steps.length - 1 ].step,
       );
     }
 
-    _didCloseEyes = false;
-    if (_stepsKey.currentState?.currentIndex != 0) {
-      _stepsKey.currentState?.reset();
-    }
-    if (mounted) {
-      WidgetsBinding.instance
-          .addPostFrameCallback((_) => setState((){}));
-    }
   }
 
   void _takePicture() async {
     try {
-
-      if (_isTakingPicture || _photoCameraState == null) {
+      if (_photoCameraState == null) {
         return;
       }
-      WidgetsBinding.instance
-          .addPostFrameCallback((_) => _isTakingPicture = true);
+
+      if(_isTakingPicture){
+        return;
+      }
+
+      setState((){
+        _isTakingPicture = true;
+      });
+
       LoadingProgress.start(context);
       await _photoCameraState!.sensorConfig.setAspectRatio(CameraAspectRatios.ratio_16_9);
-      //await _photoCameraState!.cameraContext.sensorConfig.setAspectRatio(CameraAspectRatios.ratio_16_9);
       var result = await _photoCameraState!.takePhoto();
       LoadingProgress.stop(context);
       _onDetectionCompleted(imgToReturn: result.path);
@@ -185,6 +125,95 @@ class _LivenessDetectionState extends State<LivenessDetection> {
     final String? imgPath = imgToReturn;
     WidgetsBinding.instance
         .addPostFrameCallback((_) => Navigator.pop(context, imgPath));
+  }
+
+  Widget _centerWidgetInRow(Widget wi, double width){
+    return Row(
+      children: [
+        Expanded(
+          flex: 1,
+          child: Container(),
+        ),
+        SizedBox(width: width,
+          child: Center(child: wi),
+        ),
+        Expanded(
+          flex: 1,
+          child: Container(),
+        )
+      ],
+    );
+  }
+
+  Widget step(){
+
+    var stepWidget = FlutterStepIndicator(
+      height: 28,
+      paddingLine: const EdgeInsets.symmetric(horizontal: 0),
+      positiveColor: const Color.fromARGB(255, 0, 112, 224),
+      progressColor: const Color(0xFFEA9C00),
+      negativeColor: const Color(0xFFD5D5D5),
+      padding: const EdgeInsets.all(4),
+      list: list,
+      division: _currentStep,
+      onChange: (i) {},
+      page: _currentStep,
+      onClickItem: (p0) {
+
+      },
+    );
+
+    var width = 30;
+    var length = widget.steps.length;
+    switch(length){
+      case 1 :
+        return _centerWidgetInRow(stepWidget, (width * length).toDouble());
+      case 2 :
+        return _centerWidgetInRow(stepWidget, (width + (width * (length * 2))).toDouble());
+      case 3 :
+        return _centerWidgetInRow(stepWidget, (width + (width * (length * 3))).toDouble());
+      case 4 :
+        return _centerWidgetInRow(stepWidget, (width + (width * (length * 2.5))).toDouble());
+      case 5 :
+        return stepWidget;
+      default:
+        return Container();
+    }
+  }
+
+  Future _completeStep({
+  required LivenessDetectionStep step,
+  })async{
+    if (mounted) {
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => setState((){
+        _isProcessingStep = true;
+        _isLoadingStep = true;
+      }));
+
+      await Future.delayed(
+        const Duration(milliseconds: 250),
+      );
+
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => setState((){
+            if(_currentStep < steps.length - 1) {
+              _currentStep++;
+            } else {
+              _isFinish = true;
+            }
+      }));
+
+      await Future.delayed(
+        const Duration(milliseconds: 750),
+      );
+
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => setState((){
+        _isProcessingStep = false;
+        _isLoadingStep = false;
+      }));
+    }
   }
 
   _detect({
@@ -205,13 +234,7 @@ class _LivenessDetectionState extends State<LivenessDetection> {
             (blinkThreshold?.leftEyeProbability ?? 0.25) &&
             (face.rightEyeOpenProbability ?? 1.0) <
                 (blinkThreshold?.rightEyeProbability ?? 0.25)) {
-          _startProcessing();
-          if (mounted) {
-            WidgetsBinding.instance
-                .addPostFrameCallback((_) => setState(
-                  () => _didCloseEyes = true,
-            ));
-          }
+          await _completeStep(step: step);
         }
         break;
       case LivenessDetectionStep.turnRight:
@@ -224,7 +247,6 @@ class _LivenessDetectionState extends State<LivenessDetection> {
           ) as LivenessThresholdHead?;
           if ((face.headEulerAngleY ?? 0) >
               (headTurnThreshold?.rotationAngle ?? 30)) {
-            _startProcessing();
             await _completeStep(step: step);
           }
           break;
@@ -237,7 +259,6 @@ class _LivenessDetectionState extends State<LivenessDetection> {
         ) as LivenessThresholdHead?;
         if ((face.headEulerAngleY ?? 0) <
             (headTurnThreshold?.rotationAngle ?? -30)) {
-          _startProcessing();
           await _completeStep(step: step);
         }
         break;
@@ -251,7 +272,6 @@ class _LivenessDetectionState extends State<LivenessDetection> {
           ) as LivenessThresholdHead?;
           if ((face.headEulerAngleY ?? 0) <
               (headTurnThreshold?.rotationAngle ?? -30)) {
-            _startProcessing();
             await _completeStep(step: step);
           }
           break;
@@ -264,7 +284,6 @@ class _LivenessDetectionState extends State<LivenessDetection> {
         ) as LivenessThresholdHead?;
         if ((face.headEulerAngleY ?? 0) >
             (headTurnThreshold?.rotationAngle ?? 30)) {
-          _startProcessing();
           await _completeStep(step: step);
         }
         break;
@@ -276,7 +295,6 @@ class _LivenessDetectionState extends State<LivenessDetection> {
         ) as LivenessThresholdHead?;
         if ((face.headEulerAngleX ?? 0) >
             (headTurnThreshold?.rotationAngle ?? 20)) {
-          _startProcessing();
           await _completeStep(step: step);
         }
         break;
@@ -288,7 +306,6 @@ class _LivenessDetectionState extends State<LivenessDetection> {
         ) as LivenessThresholdHead?;
         if ((face.headEulerAngleX ?? 0) <
             (headTurnThreshold?.rotationAngle ?? -20)) {
-          _startProcessing();
           await _completeStep(step: step);
         }
         break;
@@ -300,11 +317,85 @@ class _LivenessDetectionState extends State<LivenessDetection> {
         ) as LivenessThresholdSmile?;
         if ((face.smilingProbability ?? 0) >
             (smileThreshold?.probability ?? 0.75)) {
-          _startProcessing();
           await _completeStep(step: step);
         }
         break;
     }
+  }
+
+  Widget stepWidget(){
+    if(_isFinish){
+      return Align(
+        alignment: Alignment.center,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 400,),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Container(
+                decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(15)
+                ),
+                width: 100.0, // Adjust width as needed
+                height: 40.0, // Adjust height as needed
+                child: Center(child: Text("Pengambilan Foto", style: GoogleFonts.workSans(fontSize: 20), )),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    return Align(
+      alignment: Alignment.bottomCenter,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            height: 80,
+            child: AbsorbPointer(
+              absorbing: true,
+              child: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 30),
+                  padding: const EdgeInsets.all(10),
+                  child: _actionBox(steps[_currentStep].title)),
+            ),
+          ),
+          const SizedBox(height: 10,),
+          SizedBox(height: 40,
+            child: Container(
+              alignment: Alignment.center,
+              padding: const EdgeInsets.symmetric(horizontal: 7),
+              child: step(),
+            ),
+          ),
+          const SizedBox(height: 30,)
+        ],
+      ),
+    );
+  }
+
+  Widget _actionBox(String text){
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12.0), // Adjust as needed
+      child: Container(
+        alignment: Alignment.center,
+        width: 100.0, // Adjust width as needed
+        height: 70.0, // Adjust height as needed
+        color: Colors.white, // Adjust opacity and color as needed
+        child: Center(
+          child: Text(
+            text,
+            style: GoogleFonts.workSans(color: const Color.fromARGB(255, 0, 112, 224), fontSize: 18),
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -339,15 +430,21 @@ class _LivenessDetectionState extends State<LivenessDetection> {
                   stream: state.sensorConfig$,
                   builder: (_, snapshot) {
                     if (!snapshot.hasData) {
-                      return const SizedBox();
+                      return Center(
+                        child: Text("HP Anda tidak dapat melakukan Detect Face", style: GoogleFonts.workSans(fontSize: 20, color: Colors.orangeAccent),),
+                      );
+                    }else if (snapshot.hasError){
+                      return Center(
+                        child: Text("Error : ${snapshot.error}", style: GoogleFonts.workSans(fontSize: 20, color: Colors.orangeAccent),),
+                      );
                     } else {
                       return StreamBuilder<FaceDetectionModel>(
                         stream: _faceDetectionController,
                         builder: (_, faceModelSnapshot) {
                           if (!faceModelSnapshot.hasData) {
                             return  Center(
-                            child: Text("Wajah tidak terdeteksi", style: GoogleFonts.workSans(fontSize: 20, color: Colors.orangeAccent),),
-                          );
+                              child: Text("Wajah tidak terdeteksi", style: GoogleFonts.workSans(fontSize: 20, color: Colors.orangeAccent),),
+                            );
                           }
                           _processImage(faceModelSnapshot.data!.faces);
 
@@ -374,17 +471,20 @@ class _LivenessDetectionState extends State<LivenessDetection> {
             child: SizedBox(
               height: MediaQuery.of(context).size.height,
               width: MediaQuery.of(context).size.width,
-              child: LivenessDetectionStepOverlay(
-                  key: _stepsKey,
-                  steps: steps,
-                  onCompleted: () => Future.delayed(
-                    const Duration(milliseconds: 500),
-                        () => _takePicture(),
+              child: Stack(
+                children: [
+                  stepWidget(),
+                  Visibility(
+                    visible: _isLoadingStep,
+                    child: Center(
+                      child: LoadingAnimationWidget.staggeredDotsWave(
+                        color: const Color.fromARGB(255, 0, 112, 224),
+                        size: 80,
+                      ),
+                    ),
                   ),
-                  onTakingPicture: () {
-
-                  }
-              ),
+                ],
+              )
             ),
           ),
           Positioned(
@@ -481,17 +581,6 @@ class FaceDetectorPainter extends CustomPainter {
               )
                   .toList(),
               true);
-          // for (var element in faceContour.points) {
-          //   var position = preview!.convertFromImage(
-          //     Offset(element.x.toDouble(), element.y.toDouble()),
-          //     model.img!,
-          //   );
-          //   canvas.drawCircle(
-          //     position,
-          //     4,
-          //     Paint()..color = Colors.blue,
-          //   );
-          // }
         }
       });
       paths.removeWhere((key, value) => value.getBounds().isEmpty);
