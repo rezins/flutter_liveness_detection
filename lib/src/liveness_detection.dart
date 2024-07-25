@@ -13,6 +13,7 @@ import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:rxdart/rxdart.dart';
 import 'package:collection/collection.dart';
 import 'package:loading_progress/loading_progress.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 
 class LivenessDetection extends StatefulWidget {
@@ -41,12 +42,10 @@ class _LivenessDetectionState extends State<LivenessDetection> {
   bool _isProcessingStep = false;
   bool _didCloseEyes = false;
   bool _isTakingPicture = false;
-  bool _notifTakingPicture = false;
 
   List<LivenessThreshold> _thresholds = [];
 
   Timer? _timerToDetectFace;
-
 
   final options = FaceDetectorOptions(
     enableContours: true,
@@ -78,13 +77,6 @@ class _LivenessDetectionState extends State<LivenessDetection> {
   void _preInitCallBack() {
     steps = widget.steps;
     if(widget.thresholds != null) _thresholds = widget.thresholds!;
-  }
-
-  void _startFaceDetectionTimer() {
-    // Create a Timer that runs for 45 seconds and calls _onDetectionCompleted after that.
-    _timerToDetectFace = Timer(const Duration(minutes: 1, seconds: 30), () {
-      _onDetectionCompleted(imgToReturn: null); // Pass null or "" as needed.
-    });
   }
 
   Future<void> _processImage(List<Face> faces) async{
@@ -183,14 +175,13 @@ class _LivenessDetectionState extends State<LivenessDetection> {
       LoadingProgress.stop(context);
       _onDetectionCompleted(imgToReturn: result.path);
     } catch (e) {
-      print(e);
+      debugPrint(e.toString());
     }
   }
 
   void _onDetectionCompleted({
     String? imgToReturn,
   }) {
-    print(imgToReturn);
     final String? imgPath = imgToReturn;
     WidgetsBinding.instance
         .addPostFrameCallback((_) => Navigator.pop(context, imgPath));
@@ -353,13 +344,23 @@ class _LivenessDetectionState extends State<LivenessDetection> {
                       return StreamBuilder<FaceDetectionModel>(
                         stream: _faceDetectionController,
                         builder: (_, faceModelSnapshot) {
-                          if (!faceModelSnapshot.hasData) return const SizedBox();
-                          // this is the transformation needed to convert the image to the preview
-                          // Android mirrors the preview but the analysis image is not
-
+                          if (!faceModelSnapshot.hasData) {
+                            return  Center(
+                            child: Text("Wajah tidak terdeteksi", style: GoogleFonts.workSans(fontSize: 20, color: Colors.orangeAccent),),
+                          );
+                          }
                           _processImage(faceModelSnapshot.data!.faces);
 
-                          return Container();
+                          final canvasTransformation = faceModelSnapshot.data!.img
+                              ?.getCanvasTransformation(_preview!);
+
+                          return CustomPaint(
+                            painter: FaceDetectorPainter(
+                              model: faceModelSnapshot.requireData,
+                              canvasTransformation: canvasTransformation,
+                              preview: _preview!,
+                            ),
+                          );
                         },
                       );
                     }
@@ -381,7 +382,7 @@ class _LivenessDetectionState extends State<LivenessDetection> {
                         () => _takePicture(),
                   ),
                   onTakingPicture: () {
-                    _notifTakingPicture = true;
+
                   }
               ),
             ),
