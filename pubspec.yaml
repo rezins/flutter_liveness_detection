@@ -4,8 +4,7 @@ version: 0.0.1
 homepage:
 
 environment:
-  sdk: '>=3.3.0 <4.0.0'
-  flutter: ">=1.17.0"
+  sdk: ^3.9.0
 
 dependencies:
   flutter:
@@ -14,15 +13,15 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^3.0.0
-  google_mlkit_face_detection: ^0.9.0
-  camerawesome: ^2.0.1
-  equatable: ^2.0.5
+  flutter_lints:
+  google_mlkit_face_detection:
+  camerawesome:
+  equatable:
   google_fonts:
-  loading_animation_widget: ^1.2.1
-  flutter_stepindicator: ^0.1.7
-  dashed_circular_progress_bar: ^0.0.4
-  loading_progress: ^1.0.2
+  loading_animation_widget:
+  flutter_stepindicator:
+  dashed_circular_progress_bar:
+  loading_progress:
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

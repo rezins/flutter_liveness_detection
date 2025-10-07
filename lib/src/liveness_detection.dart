@@ -31,7 +31,7 @@ class _LivenessDetectionState extends State<LivenessDetection> {
 
   late final List<LivenessDetectionStepItem> steps;
   final _faceDetectionController = BehaviorSubject<FaceDetectionModel>();
-  Preview? _preview;
+  AnalysisPreview? _preview;
   PhotoCameraState? _photoCameraState;
 
   bool _isProcessingStep = false;
@@ -546,7 +546,7 @@ class _LivenessDetectionState extends State<LivenessDetection> {
 class FaceDetectorPainter extends CustomPainter {
   final FaceDetectionModel model;
   final CanvasTransformation? canvasTransformation;
-  final Preview? preview;
+  final AnalysisPreview? preview;
 
   FaceDetectorPainter({
     required this.model,
