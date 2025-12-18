@@ -87,6 +87,7 @@ class _LivenessDetectionState extends State<LivenessDetection> {
       _takePicture();
       return;
     }else{
+      if(faces.isEmpty) return;
       _detect(
         face: faces.first,
         step: steps[_currentStep < steps.length - 1 ? _currentStep : steps.length - 1 ].step,
@@ -446,6 +447,13 @@ class _LivenessDetectionState extends State<LivenessDetection> {
                               child: Text("Wajah tidak terdeteksi", style: GoogleFonts.workSans(fontSize: 20, color: Colors.orangeAccent),),
                             );
                           }
+
+                          if(faceModelSnapshot.data!.faces.isEmpty) {
+                            return  Center(
+                              child: Text("Wajah tidak ditemukan", style: GoogleFonts.workSans(fontSize: 20, color: Colors.orangeAccent),),
+                            );
+                          }
+
                           _processImage(faceModelSnapshot.data!.faces);
 
                           final canvasTransformation = faceModelSnapshot.data!.img
