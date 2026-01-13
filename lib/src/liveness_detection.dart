@@ -4,9 +4,13 @@ import 'dart:math';
 import 'package:camerawesome/pigeon.dart';
 import 'package:camerawesome/camerawesome_plugin.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_liveness_detection/models/bounding_box.dart';
+import 'package:flutter_liveness_detection/models/detection_result.dart';
 import 'package:flutter_liveness_detection/models/liveness_detection_step.dart';
 import 'package:flutter_liveness_detection/models/liveness_step_item.dart';
 import 'package:flutter_liveness_detection/models/liveness_threshold.dart';
+import 'package:flutter_liveness_detection/services/image_processor.dart';
+import 'package:flutter_liveness_detection/services/minifasnet_detector.dart';
 import 'package:flutter_liveness_detection/utils/mlkit_utils.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:rxdart/rxdart.dart';
@@ -15,13 +19,15 @@ import 'package:loading_progress/loading_progress.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:loading_animation_widget/loading_animation_widget.dart';
 import 'package:flutter_stepindicator/flutter_stepindicator.dart';
+import 'package:image/image.dart' as img;
 
 class LivenessDetection extends StatefulWidget {
 
   final List<LivenessDetectionStepItem> steps;
   final List<LivenessThreshold>? thresholds;
+  final bool enableScreenReplayDetection;
 
-  const LivenessDetection({super.key, required this.steps, this.thresholds});
+  const LivenessDetection({super.key, required this.steps, this.thresholds, this.enableScreenReplayDetection = false});
 
   @override
   State<LivenessDetection> createState() => _LivenessDetectionState();
@@ -34,10 +40,23 @@ class _LivenessDetectionState extends State<LivenessDetection> {
   AnalysisPreview? _preview;
   PhotoCameraState? _photoCameraState;
 
+  late MiniFASNetDetector _miniFasDetector;
+  bool _isDetectorInitialized = false;
+  bool _isProcessing = false;
+  DetectionResult? _lastResult;
+  String _statusMessage = 'Initializing...';
+  DateTime? _lastDetectionTime;
+
+  // Optimization: Detection cooldown (ms)
+  static const int DETECTION_COOLDOWN = 500; // 2 seconds between detections
+
+  bool _isLoading = false;
   bool _isProcessingStep = false;
   bool _isLoadingStep = false;
   bool _isFinish = false;
   bool _isTakingPicture = false;
+
+  String _finishProcessMessage = "Pengambilan Foto";
 
   List<LivenessThreshold> _thresholds = [];
   List list = [];
@@ -56,6 +75,7 @@ class _LivenessDetectionState extends State<LivenessDetection> {
   void initState() {
     _preInitCallBack();
     super.initState();
+    _initializeDetector();
   }
 
   @override
@@ -73,30 +93,309 @@ class _LivenessDetectionState extends State<LivenessDetection> {
     super.dispose();
   }
 
+  Future<void> _initializeDetector() async {
+    if(!widget.enableScreenReplayDetection) return;
+    try {
+      _isLoading = true;
+      setState(() => _statusMessage = 'Loading AI models...');
+      _miniFasDetector = MiniFASNetDetector();
+      await _miniFasDetector.initialize();
+      _isLoading = false;
+      setState(() {
+        _isDetectorInitialized = true;
+        _statusMessage = 'Position your face in the frame';
+      });
+      debugPrint('[CameraAwesome] MiniFASNet detector initialized');
+    } catch (e) {
+      _isLoading = false;
+      debugPrint('[CameraAwesome] Initialization error: $e');
+      setState(() => _statusMessage = 'Error: ${e.toString()}');
+    }
+  }
+
   void _preInitCallBack() {
     steps = widget.steps;
     if(widget.thresholds != null) _thresholds = widget.thresholds!;
     list.addAll(steps);
   }
 
-  Future<void> _processImage(List<Face> faces) async{
-    if(_isFinish){
-      await Future.delayed(
-        const Duration(seconds: 2),
-      );
-      _takePicture();
-      return;
-    }else{
-      if(faces.isEmpty) return;
-      _detect(
-        face: faces.first,
-        step: steps[_currentStep < steps.length - 1 ? _currentStep : steps.length - 1 ].step,
-      );
-    }
-
+  void _resetSteps() {
+    setState(() {
+      _currentStep = 0;
+      _isFinish = false;
+      _isProcessingStep = false;
+      _isLoadingStep = false;
+      _isProcessing = false;
+      _isTakingPicture = false;
+      _lastResult = null;
+      _statusMessage = 'Position your face in the frame';
+    });
   }
 
-  void _takePicture() async {
+  Future<void> _showSpoofingDetectedDialog({String? errorMsg}) async {
+    return showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Icon with animation
+                Container(
+                  width: 80,
+                  height: 80,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFEBEE),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.warning_rounded,
+                    size: 50,
+                    color: Color(0xFFD32F2F),
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                // Title
+                Text(
+                  'Spoofing Terdeteksi!',
+                  style: GoogleFonts.workSans(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: const Color(0xFFD32F2F),
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+
+                // Message
+                Text(
+                  'Sistem mendeteksi bahwa wajah Anda tidak asli. Mohon gunakan wajah asli untuk verifikasi.\n' + (errorMsg ?? ""),
+                  style: GoogleFonts.workSans(
+                    fontSize: 15,
+                    color: const Color(0xFF666666),
+                    height: 1.5,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
+
+                // Buttons
+                Row(
+                  children: [
+                    // Cancel Button
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                          Navigator.of(context).pop(null);
+                        },
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          side: const BorderSide(
+                            color: Color(0xFFD32F2F),
+                            width: 2,
+                          ),
+                        ),
+                        child: Text(
+                          'Keluar',
+                          style: GoogleFonts.workSans(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: const Color(0xFFD32F2F),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+
+                    /*// Retry Button
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                          _resetSteps();
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color.fromARGB(255, 0, 112, 224),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          elevation: 0,
+                        ),
+                        child: Text(
+                          'Coba Lagi',
+                          style: GoogleFonts.workSans(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),*/
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _processImage(List<Face> faces) async{
+    if(_isFinish){
+      await Future.delayed(const Duration(seconds: 2),);
+      _takePicture(faces);
+      return;
+    }
+
+    // Continue with liveness detection
+    if(faces.isEmpty) return;
+    _detect(
+      face: faces.first,
+      step: steps[_currentStep < steps.length - 1 ? _currentStep : steps.length - 1].step,
+    );
+  }
+
+  Future<String?> _performAntiSpoofingDetectionFile(File imageFile) async {
+    try {
+      final inputImage = InputImage.fromFile(imageFile);
+
+      final faces = await faceDetector.processImage(inputImage);
+
+      if (faces.isEmpty) {
+        return "Wajah tidak ditemukan";
+      }
+
+      final bytes = await imageFile.readAsBytes();
+      final image = img.decodeImage(bytes);
+
+      if (image == null) {
+        return "Gambar invalid";
+      }
+
+      // 4. Get largest face
+      final largestFace = faces.reduce(
+            (a, b) => (a.boundingBox.width * a.boundingBox.height) >
+            (b.boundingBox.width * b.boundingBox.height)
+            ? a
+            : b,
+      );
+
+      final bbox = BoundingBox.fromRect(largestFace.boundingBox);
+
+      final result = await _miniFasDetector.predict(
+        image: image,
+        boundingBox: bbox,
+      );
+
+      if(!result.isReal){
+        return 'FAKE DETECTED (${result.labelText})';
+      }
+
+      return null;
+    } catch (e) {
+      return e.toString();
+    }
+  }
+
+  Future<bool> _performAntiSpoofingDetection(List<Face> faces) async {
+    if (!_isDetectorInitialized || _isProcessing) {
+      return true;
+    }
+
+    if (faces.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _lastResult = null;
+          _statusMessage = 'No face detected - Move closer';
+        });
+      }
+      return true;
+    }
+
+    _isProcessing = true;
+
+    try {
+      // Get the largest face
+      final largestFace = faces.reduce(
+        (a, b) => (a.boundingBox.width * a.boundingBox.height) >
+                (b.boundingBox.width * b.boundingBox.height)
+            ? a
+            : b,
+      );
+
+      final faceModel = _faceDetectionController.valueOrNull;
+      if (faceModel == null || faceModel.img == null) {
+        _isProcessing = false;
+        return true; // Fallback to allow picture
+      }
+
+      // Convert AnalysisImage to img.Image for MiniFASNet
+      final image = ImageProcessor.convertFromAnalysisImage(faceModel.img!);
+      if (image == null) {
+        debugPrint('[CameraAwesome] Failed to convert image');
+        _isProcessing = false;
+        return true; // Fallback to allow picture
+      }
+
+      // Convert face bounding box to our BoundingBox format
+      final bbox = BoundingBox.fromRect(largestFace.boundingBox);
+
+      debugPrint('[CameraAwesome] Running anti-spoofing detection...');
+
+      // Run anti-spoofing detection
+      final result = await _miniFasDetector.predict(
+        image: image,
+        boundingBox: bbox,
+      );
+
+      debugPrint('[CameraAwesome] Result: ${result.statusText} (${result.confidence.toStringAsFixed(3)})');
+
+      // Update UI with anti-spoofing result
+      if (mounted) {
+        setState(() {
+          _lastResult = result;
+          _statusMessage = result.isReal
+              ? 'REAL FACE DETECTED ✓'
+              : 'FAKE DETECTED (${result.labelText})';
+        });
+      }
+
+      // Wait a moment to show the result
+      await Future.delayed(const Duration(seconds: 2));
+
+      return result.isReal;
+    } catch (e, stackTrace) {
+      debugPrint('[CameraAwesome] Processing error: $e');
+      debugPrint('$stackTrace');
+      if (mounted) {
+        setState(() {
+          _statusMessage = 'Error processing frame';
+        });
+      }
+      return true; // On error, fallback to allow picture
+    } finally {
+      _isProcessing = false;
+    }
+  }
+
+  void _takePicture(List<Face> faces) async {
     try {
       if (_photoCameraState == null) {
         return;
@@ -111,8 +410,38 @@ class _LivenessDetectionState extends State<LivenessDetection> {
       });
 
       LoadingProgress.start(context);
+
+      // if (widget.enableScreenReplayDetection) {
+      //   setState(() {
+      //     _finishProcessMessage = "Proses Anti-Spoof \nJangan gerakan kamera";
+      //   });
+      //   final isRealFace = await _performAntiSpoofingDetection(faces);
+      //   if (!isRealFace) {
+      //     LoadingProgress.stop(context);
+      //     await _showSpoofingDetectedDialog();
+      //     return;
+      //   }
+      // }
+
+      setState((){
+        _finishProcessMessage = "Pengambilan Foto";
+      });
+
       await _photoCameraState!.sensorConfig.setAspectRatio(CameraAspectRatios.ratio_16_9);
       var result = await _photoCameraState!.takePhoto();
+
+      if (widget.enableScreenReplayDetection) {
+       setState(() {
+         _finishProcessMessage = "Proses Anti-Spoof";
+       });
+        String? errorMsg = await _performAntiSpoofingDetectionFile(File(result.path!));
+        if (errorMsg != null) {
+          LoadingProgress.stop(context);
+          await _showSpoofingDetectedDialog(errorMsg: errorMsg);
+          return;
+        }
+      }
+
       LoadingProgress.stop(context);
       _onDetectionCompleted(imgToReturn: result.path);
     } catch (e) {
@@ -342,8 +671,8 @@ class _LivenessDetectionState extends State<LivenessDetection> {
                     borderRadius: BorderRadius.circular(15)
                 ),
                 width: 100.0, // Adjust width as needed
-                height: 40.0, // Adjust height as needed
-                child: Center(child: Text("Pengambilan Foto", style: GoogleFonts.workSans(fontSize: 20), )),
+                height: 50.0, // Adjust height as needed
+                child: Center(child: Text(_finishProcessMessage, style: GoogleFonts.workSans(fontSize: 20),textAlign: TextAlign.justify, )),
               ),
             ),
           ],
@@ -402,7 +731,9 @@ class _LivenessDetectionState extends State<LivenessDetection> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Stack(
+      backgroundColor: Colors.white,
+      body: _isLoading ? Center(child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation(Colors.blueAccent),),):
+      Stack(
         children: [
           CameraAwesomeBuilder.custom(
             saveConfig: SaveConfig.photoAndVideo(
@@ -567,6 +898,9 @@ class FaceDetectorPainter extends CustomPainter {
     if (preview == null || model.img == null) {
       return;
     }
+
+    var color = Colors.white;
+
     // We apply the canvas transformation to the canvas so that the barcode
     // rect is drawn in the correct orientation. (Android only)
     if (canvasTransformation != null) {
@@ -596,7 +930,7 @@ class FaceDetectorPainter extends CustomPainter {
         canvas.drawPath(
             p.value,
             Paint()
-              ..color = Colors.white
+              ..color = color
               ..strokeWidth = 0.3
               ..style = PaintingStyle.stroke);
       }
@@ -668,4 +1002,110 @@ class FaceDetectionModel {
       rotation.hashCode ^
       imageRotation.hashCode ^
       croppedSize.hashCode;
+}
+
+class SimpleFaceDetectorPainter extends CustomPainter {
+  final List<Face> faces;
+  final CanvasTransformation? canvasTransformation;
+  final AnalysisPreview? preview;
+  final AnalysisImage? img;
+  final DetectionResult? detectionResult;
+
+  SimpleFaceDetectorPainter({
+    required this.faces,
+    this.canvasTransformation,
+    this.preview,
+    this.img,
+    this.detectionResult,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (preview == null || img == null) {
+      return;
+    }
+
+    // Apply canvas transformation (Android only)
+    if (canvasTransformation != null) {
+      canvas.save();
+      canvas.applyTransformation(canvasTransformation!, size);
+    }
+
+    for (final Face face in faces) {
+      // Determine color based on detection result
+      Color boxColor = Colors.white;
+      if (detectionResult != null) {
+        boxColor = detectionResult!.isReal ? Colors.green : Colors.red;
+      }
+
+      // Draw bounding box only (no contours for performance)
+      final boundingBox = face.boundingBox;
+      final rect = Rect.fromLTRB(
+        preview!.convertFromImage(
+          Offset(boundingBox.left, boundingBox.top),
+          img!,
+        ).dx,
+        preview!.convertFromImage(
+          Offset(boundingBox.left, boundingBox.top),
+          img!,
+        ).dy,
+        preview!.convertFromImage(
+          Offset(boundingBox.right, boundingBox.bottom),
+          img!,
+        ).dx,
+        preview!.convertFromImage(
+          Offset(boundingBox.right, boundingBox.bottom),
+          img!,
+        ).dy,
+      );
+
+      // Draw rectangle with rounded corners
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(rect, const Radius.circular(8)),
+        Paint()
+          ..color = boxColor
+          ..strokeWidth = 4.0
+          ..style = PaintingStyle.stroke,
+      );
+
+      // Draw corner accents
+      _drawCornerAccents(canvas, rect, boxColor);
+    }
+
+    if (canvasTransformation != null) {
+      canvas.restore();
+    }
+  }
+
+  void _drawCornerAccents(Canvas canvas, Rect rect, Color color) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 6.0
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+
+    const double cornerLength = 30.0;
+
+    // Top-left
+    canvas.drawLine(rect.topLeft, rect.topLeft + const Offset(cornerLength, 0), paint);
+    canvas.drawLine(rect.topLeft, rect.topLeft + const Offset(0, cornerLength), paint);
+
+    // Top-right
+    canvas.drawLine(rect.topRight, rect.topRight + const Offset(-cornerLength, 0), paint);
+    canvas.drawLine(rect.topRight, rect.topRight + const Offset(0, cornerLength), paint);
+
+    // Bottom-left
+    canvas.drawLine(rect.bottomLeft, rect.bottomLeft + const Offset(cornerLength, 0), paint);
+    canvas.drawLine(rect.bottomLeft, rect.bottomLeft + const Offset(0, -cornerLength), paint);
+
+    // Bottom-right
+    canvas.drawLine(rect.bottomRight, rect.bottomRight + const Offset(-cornerLength, 0), paint);
+    canvas.drawLine(rect.bottomRight, rect.bottomRight + const Offset(0, -cornerLength), paint);
+  }
+
+  @override
+  bool shouldRepaint(SimpleFaceDetectorPainter oldDelegate) {
+    return oldDelegate.faces != faces ||
+        oldDelegate.detectionResult != detectionResult;
+  }
 }
