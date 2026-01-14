@@ -22,7 +22,7 @@ dev_dependencies:
   flutter_stepindicator:
   dashed_circular_progress_bar:
   loading_progress:
-  onnxruntime:
+  onnxruntime_v2:
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
