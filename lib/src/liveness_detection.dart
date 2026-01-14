@@ -168,7 +168,7 @@ class _LivenessDetectionState extends State<LivenessDetection> {
 
                 // Title
                 Text(
-                  'Spoofing Terdeteksi!',
+                  errorMsg != null ? "Info" : 'Spoofing Terdeteksi!',
                   style: GoogleFonts.workSans(
                     fontSize: 24,
                     fontWeight: FontWeight.bold,
@@ -180,7 +180,7 @@ class _LivenessDetectionState extends State<LivenessDetection> {
 
                 // Message
                 Text(
-                  'Sistem mendeteksi bahwa wajah Anda tidak asli. Mohon gunakan wajah asli untuk verifikasi.\n' + (errorMsg ?? ""),
+                    errorMsg ?? 'Sistem mendeteksi bahwa wajah Anda tidak asli. Mohon gunakan wajah asli untuk verifikasi.',
                   style: GoogleFonts.workSans(
                     fontSize: 15,
                     color: const Color(0xFF666666),
