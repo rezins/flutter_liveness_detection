@@ -274,8 +274,8 @@ class _LivenessDetectionState extends State<LivenessDetection> {
 
   Future<String?> _performAntiSpoofingDetectionFile(File imageFile) async {
     try {
-      final inputImage = InputImage.fromFile(imageFile);
-
+      // Try using fromFilePath first - it should handle EXIF orientation automatically
+      final inputImage = InputImage.fromFilePath(imageFile.path);
       final faces = await faceDetector.processImage(inputImage);
 
       if (faces.isEmpty) {
@@ -286,14 +286,20 @@ class _LivenessDetectionState extends State<LivenessDetection> {
         return 'Terlalu banyak wajah terdeteksi (maksimal 1 wajah)';
       }
 
+      // Decode image only when needed for anti-spoofing
       final bytes = await imageFile.readAsBytes();
-      final image = img.decodeImage(bytes);
+      var image = img.decodeImage(bytes);
 
       if (image == null) {
         return "Gambar invalid";
       }
 
-      // 4. Get largest face
+      // Fix orientation for anti-spoofing detection
+      if (Platform.isIOS) {
+        image = img.bakeOrientation(image);
+      }
+
+      // Get largest face
       final largestFace = faces.reduce(
             (a, b) => (a.boundingBox.width * a.boundingBox.height) >
             (b.boundingBox.width * b.boundingBox.height)
