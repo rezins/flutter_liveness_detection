@@ -274,35 +274,58 @@ class _LivenessDetectionState extends State<LivenessDetection> {
 
   Future<String?> _performAntiSpoofingDetectionFile(File imageFile) async {
     try {
-      // Try using fromFilePath first - it should handle EXIF orientation automatically
-      final inputImage = InputImage.fromFilePath(imageFile.path);
+      late InputImage inputImage;
+      Directory? tempDir;
+
+      if (Platform.isAndroid) {
+        // Android: Use original file directly
+        inputImage = InputImage.fromFile(imageFile);
+      } else {
+        // iOS: Fix EXIF orientation issue
+        final bytes = await imageFile.readAsBytes();
+        final decoded = img.decodeImage(bytes);
+
+        if (decoded == null) {
+          return "Gambar invalid";
+        }
+
+        final decodedImage = img.bakeOrientation(decoded);
+        tempDir = await Directory.systemTemp.createTemp('face_detection_');
+        final tempFile = File('${tempDir.path}/corrected_image.jpg');
+        await tempFile.writeAsBytes(img.encodeJpg(decodedImage));
+        inputImage = InputImage.fromFilePath(tempFile.path);
+      }
+
       final faces = await faceDetector.processImage(inputImage);
+
+      // Clean up temp file (iOS only)
+      if (tempDir != null) {
+        try {
+          await tempDir.delete(recursive: true);
+        } catch (_) {}
+      }
 
       if (faces.isEmpty) {
         return "Wajah tidak ditemukan";
       }
 
-      if(faces.length > 1){
+      if (faces.length > 1) {
         return 'Terlalu banyak wajah terdeteksi (maksimal 1 wajah)';
       }
 
-      // Decode image only when needed for anti-spoofing
+      // Decode image for anti-spoofing
       final bytes = await imageFile.readAsBytes();
-      var image = img.decodeImage(bytes);
+      final decoded = img.decodeImage(bytes);
 
-      if (image == null) {
+      if (decoded == null) {
         return "Gambar invalid";
       }
 
-      // Fix orientation for anti-spoofing detection
-      if (Platform.isIOS) {
-        image = img.bakeOrientation(image);
-      }
+      final decodedImage = img.bakeOrientation(decoded);
 
-      // Get largest face
       final largestFace = faces.reduce(
-            (a, b) => (a.boundingBox.width * a.boundingBox.height) >
-            (b.boundingBox.width * b.boundingBox.height)
+        (a, b) => (a.boundingBox.width * a.boundingBox.height) >
+                (b.boundingBox.width * b.boundingBox.height)
             ? a
             : b,
       );
@@ -310,11 +333,11 @@ class _LivenessDetectionState extends State<LivenessDetection> {
       final bbox = BoundingBox.fromRect(largestFace.boundingBox);
 
       final result = await _miniFasDetector.predict(
-        image: image,
+        image: decodedImage,
         boundingBox: bbox,
       );
 
-      if(!result.isReal){
+      if (!result.isReal) {
         return 'FAKE DETECTED (${result.labelText})';
       }
 
