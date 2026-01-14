@@ -282,6 +282,10 @@ class _LivenessDetectionState extends State<LivenessDetection> {
         return "Wajah tidak ditemukan";
       }
 
+      if(faces.length > 1){
+        return 'Terlalu banyak wajah terdeteksi (maksimal 1 wajah)';
+      }
+
       final bytes = await imageFile.readAsBytes();
       final image = img.decodeImage(bytes);
 
