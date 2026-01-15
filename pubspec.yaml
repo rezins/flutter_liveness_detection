@@ -23,7 +23,7 @@ dev_dependencies:
   dashed_circular_progress_bar:
   loading_progress:
   onnxruntime_v2:
-    git: https://github.com/bookchoy/onnxruntime_flutter.git
+    git: https://github.com/rezins/onnxruntime_flutter.git
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
