@@ -180,7 +180,7 @@ class _LivenessDetectionState extends State<LivenessDetection> {
 
                 // Message
                 Text(
-                    errorMsg ?? 'Sistem mendeteksi bahwa wajah Anda tidak asli. Mohon gunakan wajah asli untuk verifikasi.',
+                    errorMsg ?? 'Sistem mendeteksi bahwa wajah Anda tidak asli (Spoofing). Mohon gunakan wajah asli untuk verifikasi.',
                   style: GoogleFonts.workSans(
                     fontSize: 15,
                     color: const Color(0xFF666666),
@@ -337,7 +337,7 @@ class _LivenessDetectionState extends State<LivenessDetection> {
       );
 
       if (!result.isReal) {
-        return 'FAKE DETECTED (${result.labelText})';
+        return 'Sistem mendeteksi bahwa wajah Anda tidak asli (Spoofing). Mohon gunakan wajah asli untuk verifikasi. DETECTED (${result.labelText})';
       }
 
       return null;
